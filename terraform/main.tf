@@ -26,6 +26,11 @@ variable "interactsh_access_token" {
   type = string
 }
 
+variable "interactsh_version" {
+  type = string
+  default="latest"
+}
+
 variable "godaddy_access_token" {
   type = string
   default=""
@@ -41,10 +46,9 @@ variable "godaddy_ns2" {
   default=""
 }
 
-
 variable "aws_ssh_key_tag" {
   type = string
-  default = "tag:Main"
+  default = "tag:InteractSh"
 }
 
 locals {
@@ -73,7 +77,7 @@ resource "aws_security_group" "basic_interactsh" {
   }
 
   ingress {
-    description      = "TLS from Anywhere"
+    description      = "HTTPS from Anywhere"
     from_port        = 443
     to_port          = 443
     protocol         = "tcp"
@@ -109,7 +113,7 @@ resource "aws_security_group" "basic_interactsh" {
   }
 
   ingress {
-    description      = "DNS/tcp from Anywhere"
+    description      = "LDAP from Anywhere"
     from_port        = 389
     to_port          = 389
     protocol         = "tcp"
@@ -170,14 +174,6 @@ resource "aws_instance" "interactsh" {
 
     docker --version
 
-    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-
-    sudo chmod +x /usr/local/bin/docker-compose
-
-    sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-
-    docker-compose --version
-
     export PUBLIC_IPV4=${var.public_ip}
     if [ -z "$PUBLIC_IPV4" ]; then      
       export PUBLIC_IPV4=$(curl http://169.254.169.254/latest/meta-data/public-ipv4)
@@ -187,17 +183,12 @@ resource "aws_instance" "interactsh" {
     export LOCAL_IPV4=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
 
     if [ "${var.godaddy_access_token}" ]; then
-      echo "godaddy access token found; Setting public ip to NS Servers: $PUBLIC_IPV4"
-      
-      curl -X PUT -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/${var.godaddy_ns1}' -d "[{\"data\":\"$PUBLIC_IPV4\"}]" -H "Content-Type: application/json"
-      curl -X GET -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/coredefender.club/records/A/ns1canary'
-      
-      curl -X PUT -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/${var.godaddy_ns2}' -d "[{\"data\":\"$PUBLIC_IPV4\"}]" -H "Content-Type: application/json"
-      curl -X GET -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/coredefender.club/records/A/ns1canary'
+      echo "godaddy access token found; Setting public ip to NS Servers: $PUBLIC_IPV4"      
+      curl -X PUT -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/${var.godaddy_ns1}' -d "[{\"data\":\"$PUBLIC_IPV4\"}]" -H "Content-Type: application/json"           
+      curl -X PUT -H 'Authorization: sso-key ${var.godaddy_access_token}' 'https://api.godaddy.com/v1/domains/${var.godaddy_ns2}' -d "[{\"data\":\"$PUBLIC_IPV4\"}]" -H "Content-Type: application/json"      
     fi
     
-    sudo docker run -d --name interactsh -p $LOCAL_IPV4:80:80 -p $LOCAL_IPV4:443:443 -p $LOCAL_IPV4:53:53 -p $LOCAL_IPV4:53:53/udp projectdiscovery/interactsh-server -token '${var.interactsh_access_token}' -domain '${var.domain}' -ip $PUBLIC_IPV4 -root-tld  -origin-url 'https://localhost' -eviction 30 -hostmaster 'admin@${var.domain}'
-    #sudo docker run -d --name tcplogger  -p $LOCAL_IPV4:389:389 busybox /bin/sh -c 'while true; do  printf nop | nc -l -vv -p 389 -s 0.0.0.0; date -u +%Y-%m-%dT%H:%M:%SZ; echo -------------------------------------; done'
+    sudo docker run -d --name interactsh -p $LOCAL_IPV4:80:80 -p $LOCAL_IPV4:443:443 -p $LOCAL_IPV4:53:53 -p $LOCAL_IPV4:53:53/udp projectdiscovery/interactsh-server:${var.interactsh_version} -token '${var.interactsh_access_token}' -domain '${var.domain}' -ip $PUBLIC_IPV4 -root-tld  -origin-url 'http://localhost:3000' -eviction 30 -hostmaster 'admin@${var.domain}'
   EOF
 
 }
